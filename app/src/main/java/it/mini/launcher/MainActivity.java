@@ -50,11 +50,10 @@ public class MainActivity extends Activity {
 
     // ===== LISTA DELLE APP =====
     // Per cambiare ordine o nomi basta modificare questo elenco.
+    // Contatti e orologio non sono qui: si trovano in "altre app".
     private final Entry[] entries = new Entry[] {
         new Entry("telefono", R.drawable.ic_telefono, "telefono",
                 "org.fossify.phone", "com.google.android.dialer", "com.android.dialer"),
-        new Entry("contatti", R.drawable.ic_contatti, "contatti",
-                "org.fossify.contacts", "com.google.android.contacts", "com.android.contacts"),
         new Entry("messaggi", R.drawable.ic_messaggi, "messaggi",
                 "org.fossify.messages", "com.google.android.apps.messaging", "com.android.mms"),
         new Entry("whatsapp", R.drawable.ic_chat, "whatsapp",
@@ -63,16 +62,24 @@ public class MainActivity extends Activity {
                 "org.fossify.calendar", "com.google.android.calendar", "com.android.calendar"),
         new Entry("calcolatrice", R.drawable.ic_calcolatrice, "calcolatrice",
                 "org.fossify.calculator", "com.google.android.calculator", "com.android.calculator2"),
-        new Entry("orologio", R.drawable.ic_orologio, "orologio",
-                "org.fossify.clock", "com.google.android.deskclock", "com.android.deskclock"),
         new Entry("fotocamera", R.drawable.ic_fotocamera, "fotocamera",
-                "org.fossify.camera", "com.android.camera2", "com.android.camera"),
+                "com.android.camera2", "com.android.camera"),
         new Entry("kiwix", R.drawable.ic_wiki, "kiwix",
                 "org.kiwix.kiwixmobile"),
         new Entry("paint", R.drawable.ic_paint, "paint",
                 "org.fossify.paint"),
         new Entry("impostazioni", R.drawable.ic_impostazioni, "impostazioni",
                 "com.android.settings"),
+    };
+
+    // ===== APP NASCOSTE DA "ALTRE APP" =====
+    // Oltre a quelle già presenti nella lista principale, queste non compaiono mai in "altre app".
+    private static final String[] HIDDEN_PACKAGES = {
+        "org.fossify.camera",           // fotocamera di Fossify
+    };
+    // Parole (in minuscolo) contenute nel nome dell'app: se ci sono, l'app viene nascosta.
+    private static final String[] HIDDEN_WORDS = {
+        "uptodown",                     // Uptodown App Store
     };
 
     private ScrollView scroll;
@@ -171,14 +178,25 @@ public class MainActivity extends Activity {
         final PackageManager pm = getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
 
+        // pacchetti già presenti nella lista principale: qui non servono
+        Set<String> inHome = new HashSet<>();
+        for (Entry e : entries) {
+            Intent li = findLaunchIntent(pm, e);
+            if (li != null && li.getComponent() != null) {
+                inHome.add(li.getComponent().getPackageName());
+            }
+        }
+
         final List<String[]> items = new ArrayList<>(); // {nome, pacchetto}
         Set<String> seen = new HashSet<>();
         for (ResolveInfo ri : pm.queryIntentActivities(main, 0)) {
             String pkg = ri.activityInfo.packageName;
-            if (pkg.equals(getPackageName()) || !seen.add(pkg)) {
+            String label = String.valueOf(ri.loadLabel(pm));
+            if (pkg.equals(getPackageName()) || inHome.contains(pkg) || isHidden(pkg, label)
+                    || !seen.add(pkg)) {
                 continue;
             }
-            items.add(new String[] { String.valueOf(ri.loadLabel(pm)), pkg });
+            items.add(new String[] { label, pkg });
         }
         final Collator collator = Collator.getInstance(Locale.ITALIAN);
         Collections.sort(items, (a, b) -> collator.compare(a[0], b[0]));
@@ -194,6 +212,21 @@ public class MainActivity extends Activity {
             });
         }
         scroll.post(() -> scroll.scrollTo(0, 0));
+    }
+
+    private boolean isHidden(String pkg, String label) {
+        for (String p : HIDDEN_PACKAGES) {
+            if (p.equals(pkg)) {
+                return true;
+            }
+        }
+        String l = label.toLowerCase(Locale.ITALIAN);
+        for (String w : HIDDEN_WORDS) {
+            if (l.contains(w)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---------------------------------------------------------------- utilità
