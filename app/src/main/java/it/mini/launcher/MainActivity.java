@@ -1,16 +1,24 @@
 package it.mini.launcher;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ClipData;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.util.TypedValue;
+import android.view.DragEvent;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -29,13 +37,18 @@ import java.util.Set;
  * Schermata Home minimale: solo una lista con icona a sinistra e nome a destra.
  * Niente orologio, niente barra delle app in basso.
  * Lo sfondo è quello impostato nel telefono.
+ *
+ * Nella lista principale:
+ *  - tieni premuta una riga e trascinala per cambiare l'ordine;
+ *  - tieni premuta una riga e rilasciala senza spostarla per rinominare l'app.
+ * L'ordine e i nomi vengono ricordati.
  */
 public class MainActivity extends Activity {
 
     private static final int INK = Color.parseColor("#2B2B2B");
 
     private static final class Entry {
-        final String label;      // nome mostrato in lista
+        final String label;      // nome originale (serve anche come chiave per salvare ordine e nome)
         final int icon;          // icona (cartella res/drawable-nodpi)
         final String keyword;    // se nessun pacchetto è installato, cerca un'app con questo nome
         final String[] packages; // pacchetti da provare, nell'ordine
@@ -48,8 +61,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    // ===== LISTA DELLE APP =====
-    // Per cambiare ordine o nomi basta modificare questo elenco.
+    // ===== LISTA DELLE APP (ordine iniziale) =====
+    // Dopo il primo avvio l'ordine lo decidi tu trascinando le righe.
     // Contatti e orologio non sono qui: si trovano in "altre app".
     private final Entry[] entries = new Entry[] {
         new Entry("telefono", R.drawable.ic_telefono, "telefono",
@@ -85,6 +98,10 @@ public class MainActivity extends Activity {
     private ScrollView scroll;
     private LinearLayout list;
     private boolean showingAll = false;
+
+    // stato del trascinamento
+    private View draggedRow;
+    private String orderAtDragStart = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -126,6 +143,74 @@ public class MainActivity extends Activity {
         // altrimenti non fa nulla: una schermata Home non si chiude
     }
 
+    // ---------------------------------------------------------------- ordine e nomi salvati
+
+    private SharedPreferences prefs() {
+        return getSharedPreferences("mini_launcher", MODE_PRIVATE);
+    }
+
+    /** Le app nell'ordine scelto dall'utente; quelle nuove vanno in fondo. */
+    private List<Entry> orderedEntries() {
+        List<Entry> result = new ArrayList<>();
+        String saved = prefs().getString("order", "");
+        if (!saved.isEmpty()) {
+            for (String key : saved.split(",")) {
+                for (Entry e : entries) {
+                    if (e.label.equals(key) && !result.contains(e)) {
+                        result.add(e);
+                    }
+                }
+            }
+        }
+        for (Entry e : entries) {
+            if (!result.contains(e)) {
+                result.add(e);
+            }
+        }
+        return result;
+    }
+
+    private String displayName(Entry e) {
+        return prefs().getString("name_" + e.label, e.label);
+    }
+
+    private void rename(Entry e, String text) {
+        String t = text.trim();
+        SharedPreferences.Editor ed = prefs().edit();
+        if (t.isEmpty()) {
+            ed.remove("name_" + e.label);   // torna al nome originale
+        } else {
+            ed.putString("name_" + e.label, t);
+        }
+        ed.apply();
+        showMain();
+    }
+
+    private void showRenameDialog(final Entry e) {
+        final EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint(e.label);
+        input.setText(displayName(e));
+        input.setSelectAllOnFocus(true);
+
+        FrameLayout box = new FrameLayout(this);
+        box.setPadding(dp(24), dp(8), dp(24), 0);
+        box.addView(input, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        AlertDialog dialog = new AlertDialog.Builder(this, AlertDialog.THEME_DEVICE_DEFAULT_LIGHT)
+                .setTitle("rinomina")
+                .setView(box)
+                .setPositiveButton("salva", (d, w) -> rename(e, input.getText().toString()))
+                .setNeutralButton("nome originale", (d, w) -> rename(e, ""))
+                .setNegativeButton("annulla", null)
+                .create();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+        }
+        dialog.show();
+    }
+
     // ---------------------------------------------------------------- lista principale
 
     private void showMain() {
@@ -134,21 +219,98 @@ public class MainActivity extends Activity {
         list.setGravity(Gravity.BOTTOM);
 
         PackageManager pm = getPackageManager();
-        for (Entry e : entries) {
+        for (Entry e : orderedEntries()) {
+            final Entry entry = e;
             final Intent launch = findLaunchIntent(pm, e);
-            final String name = e.label;
-            addRow(name, e.icon, launch != null, () -> {
+            final String name = displayName(e);
+            LinearLayout row = addRow(name, e.icon, launch != null, () -> {
                 if (launch == null) {
                     Toast.makeText(this, name + ": non installata", Toast.LENGTH_SHORT).show();
                 } else {
                     open(launch);
                 }
             });
+            row.setTag(entry);
+            row.setOnLongClickListener(v -> {
+                startDrag(v, entry);
+                return true;
+            });
+            row.setOnDragListener(this::onRowDrag);
         }
         addRow("altre app", 0, true, this::showAll);
 
         scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
     }
+
+    // ---------------------------------------------------------------- trascinamento
+
+    private void startDrag(View row, Entry e) {
+        draggedRow = row;
+        orderAtDragStart = currentRowOrder();
+        row.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+        ClipData data = ClipData.newPlainText("app", e.label);
+        row.startDragAndDrop(data, new View.DragShadowBuilder(row), e, 0);
+    }
+
+    private boolean onRowDrag(View v, DragEvent ev) {
+        if (!(ev.getLocalState() instanceof Entry)) {
+            return false;
+        }
+        switch (ev.getAction()) {
+            case DragEvent.ACTION_DRAG_STARTED:
+                if (v == draggedRow) {
+                    v.setAlpha(0.35f);          // la riga che stai spostando diventa sbiadita
+                }
+                return true;
+            case DragEvent.ACTION_DRAG_ENTERED:
+                if (draggedRow != null && v != draggedRow) {
+                    int to = list.indexOfChild(v);
+                    list.removeView(draggedRow);
+                    list.addView(draggedRow, to);   // le righe si spostano mentre trascini
+                }
+                return true;
+            case DragEvent.ACTION_DRAG_ENDED:
+                if (v == draggedRow) {
+                    finishDrag(ev.getResult());
+                }
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private void finishDrag(boolean dropped) {
+        final Entry entry = draggedRow != null ? (Entry) draggedRow.getTag() : null;
+        String now = currentRowOrder();
+        final boolean changed = !now.equals(orderAtDragStart);
+        if (changed) {
+            prefs().edit().putString("order", now).apply();
+        }
+        draggedRow = null;
+        // si ricostruisce la lista dopo la fine del trascinamento, non durante
+        list.post(() -> {
+            showMain();
+            if (!changed && dropped && entry != null) {
+                showRenameDialog(entry);        // rilasciata senza spostarla: rinomina
+            }
+        });
+    }
+
+    private String currentRowOrder() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < list.getChildCount(); i++) {
+            Object tag = list.getChildAt(i).getTag();
+            if (tag instanceof Entry) {
+                if (sb.length() > 0) {
+                    sb.append(',');
+                }
+                sb.append(((Entry) tag).label);
+            }
+        }
+        return sb.toString();
+    }
+
+    // ---------------------------------------------------------------- ricerca delle app
 
     private Intent findLaunchIntent(PackageManager pm, Entry e) {
         for (String p : e.packages) {
@@ -242,7 +404,7 @@ public class MainActivity extends Activity {
     /**
      * iconRes > 0: icona + nome; iconRes == 0: spazio vuoto al posto dell'icona; iconRes < 0: solo nome.
      */
-    private void addRow(String label, int iconRes, boolean available, final Runnable action) {
+    private LinearLayout addRow(String label, int iconRes, boolean available, final Runnable action) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -272,6 +434,7 @@ public class MainActivity extends Activity {
 
         list.addView(row, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return row;
     }
 
     private int selectableBackground() {
