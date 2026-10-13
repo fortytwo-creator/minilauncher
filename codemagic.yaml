@@ -1,0 +1,21 @@
+workflows:
+  android-apk:
+    name: Mini Launcher (APK di prova)
+    max_build_duration: 20
+    instance_type: linux_x2
+    environment:
+      java: 17
+    scripts:
+      - name: Compila l'APK
+        script: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+    artifacts:
+      - app/build/outputs/**/*.apk
+    publishing:
+      email:
+        recipients:
+          nextlevelup9999@gmail.com   # <-- metti qui la tua email: ti arriva il link per scaricare l'APK
+        notify:
+          success: true
+          failure: true

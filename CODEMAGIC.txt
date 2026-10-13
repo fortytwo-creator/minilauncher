@@ -1,0 +1,38 @@
+COMPILARE CON CODEMAGIC (senza Android Studio)
+==============================================
+
+1) Metti il progetto su GitHub
+   - Crea un account su github.com (gratis) e un nuovo repository, anche privato
+     (pulsante "New repository", nome: mini-launcher).
+   - Decomprimi MiniLauncher.zip. Nella pagina del repository: "Add file" -> "Upload files",
+     trascina DENTRO il contenuto della cartella MiniLauncher (non la cartella stessa):
+     devono comparire subito, nella radice del repository, i file
+     codemagic.yaml, gradlew, settings.gradle e la cartella app.
+   - Premi "Commit changes".
+   Nota: .gitignore e le cartelle che iniziano con un punto potrebbero non essere trascinate
+   dal browser: non e' un problema, il progetto funziona lo stesso.
+
+2) Collega Codemagic
+   - Vai su codemagic.io, "Sign up" con GitHub e autorizza l'accesso al repository.
+   - "Add application" -> scegli il repository mini-launcher -> come tipo di progetto scegli
+     la configurazione con file "codemagic.yaml" (se non lo propone da solo, e' l'opzione
+     "Switch to YAML configuration").
+   - Apri codemagic.yaml su GitHub (icona matita) e sostituisci tuo-indirizzo@example.com
+     con la tua email.
+
+3) Avvia la compilazione
+   - "Start new build", scegli il workflow "Mini Launcher (APK di prova)" e il ramo main.
+   - Dopo qualche minuto, in "Artifacts" trovi app-debug.apk. Scaricalo.
+
+4) Installalo sul telefono
+   - Dal PC con il cavo:  adb install app-debug.apk
+   - Oppure copia il file sul telefono e aprilo (serve consentire "origini sconosciute").
+   - Poi: Impostazioni -> App -> App predefinite -> App Home -> Mini Launcher.
+
+Se la compilazione fallisce
+   - Apri il registro del build (Build log), copia le ultime righe con la scritta "error"
+     e mandamele: lo correggo e ti rispedisco i file da sostituire.
+   - Ogni modifica caricata su GitHub e' un nuovo commit: poi basta rilanciare "Start new build".
+
+Nota: l'APK e' di prova (debug) ed e' gia' firmato con una chiave temporanea, quindi si
+installa senza altro. Va benissimo per uso personale.

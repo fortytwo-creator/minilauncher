@@ -1,0 +1,38 @@
+MINI LAUNCHER - schermata Home minimale
+=======================================
+
+Cosa fa
+- Una sola lista: icona a sinistra, nome in minuscolo a destra.
+- Niente orologio grande, niente barra delle app in basso.
+- Usa lo sfondo impostato nel telefono (consigliato: carta_grigia.png).
+- In fondo alla lista c'e' "altre app": apre l'elenco di tutte le app installate
+  (solo nomi, in ordine alfabetico). "indietro" o il tasto Indietro tornano alla lista.
+- Premendo Home si torna sempre alla lista principale.
+- Una voce sbiadita significa che quell'app non e' installata.
+
+COME COMPILARLO (sul PC)
+1. Installa Android Studio (gratis, developer.android.com/studio).
+2. File -> Open -> scegli la cartella MiniLauncher e aspetta che finisca la sincronizzazione
+   (la prima volta scarica da solo Gradle e gli strumenti Android; se chiede di aggiornare
+   il plugin Android Gradle, accetta).
+3. Collega il telefono con il debug USB attivo e premi il tasto Run (triangolo verde).
+   In alternativa: menu Build -> Build APK(s), poi installa il file
+   app/build/outputs/apk/debug/app-debug.apk con:  adb install app-debug.apk
+
+COME USARLO COME HOME
+1. Sul telefono: Impostazioni -> App -> App predefinite -> App Home -> Mini Launcher.
+   (oppure premi il tasto Home: il telefono chiede quale usare, scegli Mini Launcher e "Sempre")
+2. NON rimuovere il launcher originale (com.android.launcher3): serve come rete di sicurezza
+   se qualcosa non va. Per tornare indietro basta rimetterlo come App Home.
+
+COME PERSONALIZZARLO
+- Ordine, nomi e app: file app/src/main/java/it/mini/launcher/MainActivity.java,
+  elenco "entries" in alto. Ogni voce prova i pacchetti nell'ordine indicato e, se non ne
+  trova nessuno, cerca un'app il cui nome contiene la parola chiave.
+- Icone: cartella app/src/main/res/drawable-nodpi (PNG con lo stesso nome, ic_*.png).
+- Dimensioni e margini: valori dp() in MainActivity.java.
+
+NOTA
+Questo progetto non e' stato compilato dove e' stato scritto (mancava l'ambiente Android),
+quindi al primo tentativo potrebbe servire qualche piccola correzione. Se Android Studio
+mostra un errore, copialo e mandamelo.
