@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.DragEvent;
@@ -29,8 +30,10 @@ import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -99,6 +102,9 @@ public class MainActivity extends Activity {
     private LinearLayout list;
     private boolean showingAll = false;
 
+    // pallini rossi delle notifiche, uno per riga della lista principale
+    private final Map<Entry, View> dots = new LinkedHashMap<>();
+
     // stato del trascinamento
     private View draggedRow;
     private String orderAtDragStart = "";
@@ -125,6 +131,53 @@ public class MainActivity extends Activity {
         super.onResume();
         if (!showingAll) {
             showMain();
+        }
+        NotificationService.onChange = this::updateDots;
+        updateDots();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        NotificationService.onChange = null;
+    }
+
+    // ---------------------------------------------------------------- pallino rosso
+
+    private View makeDot() {
+        View dot = new View(this);
+        GradientDrawable shape = new GradientDrawable();
+        shape.setShape(GradientDrawable.OVAL);
+        shape.setColor(Color.parseColor("#E03131"));
+        dot.setBackground(shape);
+        dot.setVisibility(View.INVISIBLE);
+        return dot;
+    }
+
+    /** Pacchetti le cui notifiche accendono il pallino di questa riga. */
+    private List<String> dotPackages(Entry e) {
+        List<String> result = new ArrayList<>();
+        Collections.addAll(result, e.packages);
+        if (e.label.equals("telefono")) {
+            // le chiamate perse vengono pubblicate dal sistema, non sempre dall'app telefono
+            result.add("com.android.server.telecom");
+            result.add("com.android.incallui");
+        }
+        return result;
+    }
+
+    private void updateDots() {
+        for (Map.Entry<Entry, View> item : dots.entrySet()) {
+            boolean on = false;
+            synchronized (NotificationService.active) {
+                for (String pkg : dotPackages(item.getKey())) {
+                    if (NotificationService.active.contains(pkg)) {
+                        on = true;
+                        break;
+                    }
+                }
+            }
+            item.getValue().setVisibility(on ? View.VISIBLE : View.INVISIBLE);
         }
     }
 
@@ -219,6 +272,7 @@ public class MainActivity extends Activity {
         list.setGravity(Gravity.CENTER_VERTICAL);
         // più spazio sotto che sopra: la lista resta centrata, ma un po' più in alto
         list.setPadding(dp(36), dp(24), dp(24), dp(48));
+        dots.clear();
 
         PackageManager pm = getPackageManager();
         for (Entry e : orderedEntries()) {
@@ -233,6 +287,11 @@ public class MainActivity extends Activity {
                 }
             });
             row.setTag(entry);
+            View dot = makeDot();
+            LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(9), dp(9));
+            dotParams.leftMargin = dp(10);
+            row.addView(dot, dotParams);
+            dots.put(entry, dot);
             row.setOnLongClickListener(v -> {
                 startDrag(v, entry);
                 return true;
@@ -243,6 +302,8 @@ public class MainActivity extends Activity {
         LinearLayout hidden = addRow("altre app", 0, true, this::showAll);
         hidden.setMinimumHeight(dp(64));
         hidden.setAlpha(0f);
+
+        updateDots();
     }
 
     // ---------------------------------------------------------------- trascinamento
@@ -340,6 +401,7 @@ public class MainActivity extends Activity {
         list.removeAllViews();
         list.setGravity(Gravity.TOP);
         list.setPadding(dp(36), dp(24), dp(24), dp(32));
+        dots.clear();
 
         final PackageManager pm = getPackageManager();
         Intent main = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
