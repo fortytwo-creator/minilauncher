@@ -15,7 +15,7 @@ workflows:
     publishing:
       email:
         recipients:
-          nextlevelup9999@gmail.com   # <-- metti qui la tua email: ti arriva il link per scaricare l'APK
+          - nextlevelup9999@gmail.com
         notify:
           success: true
           failure: true
