@@ -1,6 +1,13 @@
 package it.mini.launcher;
 
 import android.app.Notification;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.media.AudioAttributes;
+import android.media.SoundPool;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.service.notification.NotificationListenerService;
@@ -25,9 +32,99 @@ public class NotificationService extends NotificationListenerService {
 
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
+    // ===== SUONI DI BLOCCO E SBLOCCO =====
+    // Scegli la coppia: "interruttore", "lucchetto", "cricchetto" oppure "macchina".
+    private static final String SOUND_SET = "lucchetto";
+
+    private SoundPool pool;
+    private int lockSound;
+    private int unlockSound;
+    private boolean soundsOn;
+
+    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (pool == null || intent.getAction() == null) {
+                return;
+            }
+            switch (intent.getAction()) {
+                case Intent.ACTION_SCREEN_OFF:
+                    play(lockSound);
+                    break;
+                case Intent.ACTION_USER_PRESENT:
+                    play(unlockSound);
+                    break;
+                default:
+                    break;
+            }
+        }
+    };
+
+    private void play(int id) {
+        if (id != 0) {
+            pool.play(id, 1f, 1f, 1, 0, 1f);
+        }
+    }
+
+    private int load(String suffix) {
+        int res = getResources().getIdentifier(SOUND_SET + "_" + suffix, "raw", getPackageName());
+        return res == 0 ? 0 : pool.load(this, res, 1);
+    }
+
+    private void startSounds() {
+        if (soundsOn) {
+            return;
+        }
+        AudioAttributes attrs = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build();
+        pool = new SoundPool.Builder().setMaxStreams(2).setAudioAttributes(attrs).build();
+        lockSound = load("blocco");
+        unlockSound = load("sblocco");
+
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_USER_PRESENT);
+        if (Build.VERSION.SDK_INT >= 33) {
+            registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(screenReceiver, filter);
+        }
+        soundsOn = true;
+    }
+
+    private void stopSounds() {
+        if (!soundsOn) {
+            return;
+        }
+        try {
+            unregisterReceiver(screenReceiver);
+        } catch (Exception ignored) {
+            // già rimosso
+        }
+        if (pool != null) {
+            pool.release();
+            pool = null;
+        }
+        soundsOn = false;
+    }
+
     @Override
     public void onListenerConnected() {
         refresh();
+        startSounds();
+    }
+
+    @Override
+    public void onListenerDisconnected() {
+        stopSounds();
+    }
+
+    @Override
+    public void onDestroy() {
+        stopSounds();
+        super.onDestroy();
     }
 
     @Override
