@@ -34,7 +34,7 @@ public class NotificationService extends NotificationListenerService {
 
     // ===== SUONI DI BLOCCO E SBLOCCO =====
     // Scegli la coppia: "interruttore", "lucchetto", "cricchetto" oppure "macchina".
-    private static final String SOUND_SET = "lucchetto";
+    private static final String SOUND_SET = "interruttore";
 
     private SoundPool pool;
     private int lockSound;
