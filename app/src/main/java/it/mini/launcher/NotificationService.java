@@ -1,5 +1,6 @@
 package it.mini.launcher;
 
+import android.app.KeyguardManager;
 import android.app.Notification;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -10,6 +11,7 @@ import android.media.SoundPool;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 
@@ -34,7 +36,7 @@ public class NotificationService extends NotificationListenerService {
 
     // ===== SUONI DI BLOCCO E SBLOCCO =====
     // Scegli la coppia: "interruttore", "lucchetto", "cricchetto" oppure "macchina".
-    private static final String SOUND_SET = "interruttore";
+    private static final String SOUND_SET = "lucchetto";
 
     private SoundPool pool;
     private int lockSound;
@@ -49,13 +51,46 @@ public class NotificationService extends NotificationListenerService {
             }
             switch (intent.getAction()) {
                 case Intent.ACTION_SCREEN_OFF:
+                    waitingUnlock = false;
+                    MAIN.removeCallbacks(pollTask);
                     play(lockSound);
                     break;
+                case Intent.ACTION_SCREEN_ON:
+                    // lo sblocco si riconosce anche controllando il blocco schermo:
+                    // alcuni telefoni non inviano (o inviano in ritardo) ACTION_USER_PRESENT
+                    waitingUnlock = true;
+                    pollUntil = SystemClock.uptimeMillis() + 30000;
+                    MAIN.removeCallbacks(pollTask);
+                    MAIN.post(pollTask);
+                    break;
                 case Intent.ACTION_USER_PRESENT:
-                    play(unlockSound);
+                    if (waitingUnlock) {
+                        waitingUnlock = false;
+                        MAIN.removeCallbacks(pollTask);
+                        play(unlockSound);
+                    }
                     break;
                 default:
                     break;
+            }
+        }
+    };
+
+    private boolean waitingUnlock;
+    private long pollUntil;
+
+    private final Runnable pollTask = new Runnable() {
+        @Override
+        public void run() {
+            if (!waitingUnlock || pool == null) {
+                return;
+            }
+            KeyguardManager km = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+            if (km == null || !km.isKeyguardLocked()) {
+                waitingUnlock = false;
+                play(unlockSound);
+            } else if (SystemClock.uptimeMillis() < pollUntil) {
+                MAIN.postDelayed(this, 150);
             }
         }
     };
@@ -85,6 +120,7 @@ public class NotificationService extends NotificationListenerService {
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(Intent.ACTION_SCREEN_OFF);
+        filter.addAction(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_USER_PRESENT);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(screenReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
